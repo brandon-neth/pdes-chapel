@@ -170,11 +170,11 @@ class CarWash : Component {
 
 class Exit : Component {
 
-  var carList : list(string);
+  var carList : list((int, string));
 
   proc init() {
     super.init(-1);
-    carList = new list(string);
+    carList = new list((int, string));
   }
   override proc handleEvent(e: event) {
     var msg = e.message;
@@ -186,7 +186,7 @@ class Exit : Component {
       when "finished" {
         var content = pieces[1];
         var carName = content;
-        carList.pushBack(carName);
+        carList.pushBack((e.receiveTime, carName));
       }
       otherwise {
         writeln("Unexpected message type for Exit component: ", msgType);
@@ -257,6 +257,16 @@ proc carWash1() {
     writeln("cw2 queues: ", cw2.inputQueues);
     writeln("exit queues: ", exit.inputQueues);
   }
+
+  var correct: list((int, string));
+  correct.pushBack(((11, "c1")));
+  correct.pushBack(((18, "c2")));
+  correct.pushBack(((19, "c3")));
+  correct.pushBack(((27, "c5")));
+  correct.pushBack(((28, "c4")));
+  correct.pushBack(((35, "c6")));
+
+  assert(exit.carList == correct);
 }
 
 proc carWashArray() {
@@ -313,7 +323,7 @@ proc carWashArray() {
 
   writeln("\n\nCar Wash Through Component Array\n\n");
 
-  for i in 1..10 {
+  for i in 1..100 {
     writeln("Beginning phase ", i);
     forall component in components {
       if component == nil then continue;
@@ -325,6 +335,16 @@ proc carWashArray() {
   }
 
   writeln((components[4]! : Exit).carList);
+
+  var correct: list((int, string));
+  correct.pushBack(((11, "c1")));
+  correct.pushBack(((18, "c2")));
+  correct.pushBack(((19, "c3")));
+  correct.pushBack(((27, "c5")));
+  correct.pushBack(((28, "c4")));
+  correct.pushBack(((35, "c6")));
+
+  assert((components[4]!:Exit).carList == correct);
 
 }
 
@@ -373,7 +393,7 @@ proc carWashWithEntrance() {
   components[4] = cw2;
   components[5] = exit;
 
-  for i in 1..10 {
+  for 1..10 {
     for component in components {
       if component == nil then continue;
       component!.step();
@@ -399,11 +419,13 @@ proc carWashWithEntrance() {
     }
   }
   for component in components {
-    writeln("queues: ", component!.inputQueues);
+    writeln(component);
   }
 
   writeln("Cars completed:");
   writeln((components[5]! : Exit).carList);
+
+  
 }
 
 proc main() {

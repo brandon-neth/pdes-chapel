@@ -1,5 +1,3 @@
-// This file contains the Event and EventQueue data structures
-
 use List;
 use Heap;
 use SortedSet;
@@ -7,42 +5,66 @@ use Sort;
 use Map;
 use IO;
 
-record event {
+
+
+record event : writeSerializable{
   var receiveTime: int;
   var message: string;
   var sender: borrowed Component?;
+  var null: bool;
 
   proc init() {
     receiveTime = -1;
     message = "";
     sender = nil;
+    null = false;
   }
   
-  proc init(receiveTime: int, message: string) {
-    this.receiveTime = receiveTime;
-    this.message = message;
-    this.sender = nil;
-  }
-
-  proc init(receiveTime: int, message: string, sender: borrowed Component?) {
+  proc init(receiveTime: int, message: string, 
+            sender: borrowed Component? = nil, null = false) {
     this.receiveTime = receiveTime;
     this.message = message;
     this.sender = sender;
+    this.null = null;
+  }
+
+  // For creating null messages
+  proc init(receiveTime: int, null: bool, 
+            sender: borrowed Component? = nil) {
+    this.receiveTime = receiveTime;
+    this.message = "";
+    this.sender = sender; 
+    this.null = null;
   }
 
   proc isNull() {
-    return this.message.startsWith("null");
+    return null;
   }
+  
+  proc serialize(writer: fileWriter(locking=false, ?),
+                 ref serializer: ?st) {
+    writer.write(this:string);              
+  }
+}
+
+operator :(from: event, type toType: string) {
+   var message:string = "(";
+   message += (from.receiveTime):string;
+   message += ", " ;
+   message += (if from.null then "null" else "\"" + from.message + "\"");
+   message += ")";
+   return message;
 }
 
 record eventComparator: keyPartComparator {
 
   proc keyPart(elt: event, i: int) {
     var len = elt.message.numBytes;
-    var section = if i <= len then keyPartStatus.returned 
+    var section = if i < len+2 then keyPartStatus.returned 
                     else keyPartStatus.pre;
     var part =    if i == 0 then elt.receiveTime 
-                    else if i <= len then elt.message.byte(i-1) 
+                  else if i == 1 then !elt.null
+                    else if i < len+2 then elt.message.byte(i-2) 
                       else 0;
     return (section, part);    
   }
@@ -50,6 +72,8 @@ record eventComparator: keyPartComparator {
   proc compare(x: event, y: event) {
     if x.receiveTime < y.receiveTime then return -1;
     if x.receiveTime > y.receiveTime then return 1;
+    if x.isNull() && !y.isNull() then return 1;
+    if !x.isNull() && y.isNull() then return -1;
     if x.message < y.message then return -1;
     if x.message > y.message then return 1;
     return 0;
@@ -73,11 +97,7 @@ class EventQueue : writeSerializable {
 
   override proc serialize(writer: fileWriter(locking=false, ?),
                  ref serializer: ?st) {
-    
-    var strs = forall event in events do 
-      "(" + event.receiveTime:string + ", '" + event.message + "')";
-    var content = ", ".join(strs);
-    writer.write("[" + content + "]");
+    writer.write(this:string);
   }
   /*
      Returns the first (highest priority) event in the queue.
@@ -99,6 +119,13 @@ class EventQueue : writeSerializable {
     if !success then
       throw new Error("tried to index into empty EventQueue.");
     return event;
+  }
+
+  /*
+    Returns how many events are in the channel
+  */
+  proc size {
+    return events.size;
   }
 
   /*
@@ -144,7 +171,14 @@ class EventQueue : writeSerializable {
   }
 }
 
-class Component {
+
+operator :(from: EventQueue, type toType: string) {
+  var strs = forall event in from.events do event:string;
+  var content = ", ".join(strs);
+  return "[" + content + "]";
+}
+
+class Component : writeSerializable {
 
   var id: int;
   var inputQueues : list(shared EventQueue, parSafe = false);
@@ -161,6 +195,11 @@ class Component {
   proc init(id: int) {
     this.init();
     this.id = id;
+  }
+
+  override proc serialize(writer: fileWriter(locking=false, ?),
+                          ref serializer: ?st) throws {
+    writer.write(this:string);
   }
 
   proc handleEvent(e: event) {
@@ -217,7 +256,7 @@ class Component {
 
   proc sendNulls() {
     for queue in outputQueues do
-      queue.add(new event(clockValue + lookahead(), "null", this));
+      queue.add(new event(clockValue + lookahead(), true, this));
   }
 
   proc step() {
@@ -230,4 +269,22 @@ class Component {
       sendNulls();
     }
   }
+}
+
+operator :(from: Component, type toType: string) {
+  var str = "";
+  str += ("Component: " + from.id:string + ", ");
+  str += ("Clock Value: " + from.clockValue:string);
+  str += ("\nInput Queues: [");
+  var queues = for q in from.inputQueues do q:string;
+  var qStr = ",\n  ".join(queues);
+  if queues.size > 0 {
+    str += "\n  ";
+  }
+  str += qStr;
+  if queues.size > 0 {
+    str += "\n";
+  }
+  str += ("]");
+  return str;
 }
