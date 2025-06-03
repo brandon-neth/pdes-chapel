@@ -15,8 +15,6 @@ proc testEvents() {
   stringEvent.sender!.id = 2;
   writeln("id through component: ", emptyComponent.id);
   writeln("id through event: ", stringEvent.sender!.id);
-
-
 }
 
 proc testEventInsertion() {

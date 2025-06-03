@@ -29,6 +29,10 @@ record event {
     this.message = message;
     this.sender = sender;
   }
+
+  proc isNull() {
+    return this.message.startsWith("null");
+  }
 }
 
 record eventComparator: keyPartComparator {
@@ -53,7 +57,7 @@ record eventComparator: keyPartComparator {
 }
 
 class EventQueue : writeSerializable {
-  var events : sortedSet(event, parSafe=false, eventComparator);
+  var events : sortedSet(event, parSafe=true, eventComparator);
 
   // This variable holds a persistent copy of the channel clock
   // time. This is so that if all the events in a queue are 
@@ -61,8 +65,9 @@ class EventQueue : writeSerializable {
   // It is updated when events are removed.
   var maxPoppedReceiveTime: int;
 
+  var lock: sync bool;
   proc init() {
-    events = new sortedSet(event, parSafe=false, eventComparator);
+    events = new sortedSet(event, parSafe=true, eventComparator);
     maxPoppedReceiveTime = 0;
   }
 
@@ -100,16 +105,28 @@ class EventQueue : writeSerializable {
      Pops the highest priority event from the queue
   */
   proc pop() throws {
+    lock.writeEF(true);
     var event = first();
     if !events.remove(event) {
+      lock.readFE();
       throw new Error("failed to remove popped event.");
     }
+    lock.readFE();
     maxPoppedReceiveTime = event.receiveTime;
     return event;
   }
 
   proc add(e: event) {
+    lock.writeEF(true);
+    // Any message put in the buffer after a null message
+    // annihilates any null message ahead of it in the buffer
+    try {
+      while last().isNull() {
+        events.remove(last());
+      }
+    } catch {}
     events.add(e);
+    lock.readFE();
   }
 
 
@@ -147,7 +164,7 @@ class Component {
   }
 
   proc handleEvent(e: event) {
-    writeln("Base component event handler called. Content: ", e.message);
+    writeln("Warning: Base component event handler called. Content: ", e.message);
   }
 
   proc nextEvent(): event throws {
@@ -179,7 +196,6 @@ class Component {
     }
     if lowestClock > clockValue {
       clockValue = lowestClock;
-      writeln("updated clock value to ", clockValue);
       return true;
     }
     return false;
@@ -195,19 +211,23 @@ class Component {
     return false;
   }
 
+  proc lookahead() {
+    return 0;
+  }
 
-  proc step(lookahead: int = 0) {
+  proc sendNulls() {
+    for queue in outputQueues do
+      queue.add(new event(clockValue + lookahead(), "null", this));
+  }
+
+  proc step() {
     var updated = updateClockValue();
     while hasEventToProcess() {
       var e = nextEvent();
-      writeln("Handling event: ", e.message, ", ", e.receiveTime);
       handleEvent(e);
     }
     if updated {
-      for queue in outputQueues {
-        var e = new event(clockValue + lookahead, "null", this);
-        queue.add(e);
-      }
+      sendNulls();
     }
   }
 }
