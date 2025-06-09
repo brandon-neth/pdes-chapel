@@ -1,6 +1,6 @@
 // This file contains unit tests for the PDES data structures
 
-use PDES;
+use CMB;
 
 
 proc testReference() {

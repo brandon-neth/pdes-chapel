@@ -1,4 +1,4 @@
-use PDES;
+use CMB;
 use Math;
 use Random;
 use List;
@@ -38,7 +38,9 @@ class Node : Component {
   }
 
   override proc handleEvent(e: event) {
+    if e.isNull() then return;
     var msg = e.message;
+
     var pieces: list(string, parSafe=false) = msg.split(" ", maxsplit=1);
     var msgType = pieces[0];
 
