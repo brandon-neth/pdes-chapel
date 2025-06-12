@@ -262,7 +262,9 @@ proc testRestore1() {
   // Add an event that will be rolled back
   c.addEvent(e3);
   assert(c.counter == 0);
-  
+  assert(c.futureEvents.size == 3);
+  assert(c.pastEvents.size == 0);
+  assert(c.savedStates.size == 2); // Initialized one and one at time 0.
   
   writeln("testRestore1 Success");
 }
