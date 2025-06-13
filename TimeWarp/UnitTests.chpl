@@ -214,6 +214,7 @@ class CounterClass1 : TwComponent {
 
   override proc handleEvent(e: event) {
     counter += 1;
+    e;
   }
 
   override proc store() {

@@ -197,6 +197,9 @@ class TwComponent {
     futureEvents.add(e);
   }
 
+  proc empty() {
+    return futureEvents.size == 0;
+  }
   proc rollback(timestamp: int) {
 
     // First, restore the state of the component and get the timestamp that 
@@ -241,7 +244,9 @@ class TwComponent {
     if !success1 {
       // No saved states newer than the timestamp, remove all but the last
       while savedStates.size > 1 {
-        savedStates.remove(savedStates.kth(1)[1]);
+        var (success11, stateToRemove) = savedStates.kth(1);
+        savedStates.remove(stateToRemove);
+        freeSavedState(stateToRemove[1]);
       }
     } else {
       var (success2, stateToKeep) = savedStates.predecessor(s);
@@ -360,6 +365,21 @@ class TwComponent {
       throw new Error("No saved state to restore from.");
     }
   }
+}
+
+proc gvt(components: [shared TwComponent]) {
+  assert(components.size > 0,
+         "Cannot calculate GVT of an empty set of components.");
+  // Calculate the global virtual time of the system
+  var gvt = components[0].localVirtualTime;
+  for c in components {
+    if c.localVirtualTime < gvt then
+      gvt = c.localVirtualTime;
+  }
+  for c in components {
+    c.fossilCollect(gvt);
+  }
+  return gvt;
 }
 
 
