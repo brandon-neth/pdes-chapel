@@ -2,28 +2,7 @@ use TimeWarp;
 use CTypes;
 
 
-class QuietComponent: TwComponent {
-  /* This is a component that just silently handles events.
-     It's for testing */
 
-  proc init() {
-    super.init();
-    init this;
-    saveState();
-  }
-  override proc handleEvent(e: event) {
-    return;
-  }
-  override proc store(): c_ptr(void) {
-    // No state to store
-    var contents = (0,);
-    return c_ptrTo(contents): c_ptr(void);
-  }
-  override proc restore(contents: c_ptr(void)) {
-    // No state to restore
-    contents;
-  }
-}
 
 proc testReverseComparator() {
   writeln("testReverseComparator...");

@@ -288,3 +288,13 @@ operator :(from: Component, type toType: string) {
   str += ("]");
   return str;
 }
+
+proc runSimulation(components: []shared Component?, endTime: int) {
+  forall component in components {
+    if component == nil then continue;
+    while component!.clockValue < endTime {
+      component!.step();
+    }
+    component!.sendNulls();
+  }
+}

@@ -384,3 +384,29 @@ proc gvt(components: [shared TwComponent]) {
 
 
 
+class QuietComponent: TwComponent {
+  /* This is a component that just silently handles events. */
+
+  proc init() {
+    super.init();
+    init this;
+    saveState();
+  }
+  override proc handleEvent(e: event) {
+    return;
+  }
+  override proc store(): c_ptr(void) {
+    // No state to store
+    var contents = (0,);
+    return c_ptrTo(contents): c_ptr(void);
+  }
+  override proc restore(contents: c_ptr(void)) {
+    // No state to restore
+    contents;
+  }
+
+  override proc freeSavedState(contents: c_ptr(void)) {
+    // No state to free
+    contents;
+  }
+}
