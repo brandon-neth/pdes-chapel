@@ -187,6 +187,8 @@ class Component {
 
 proc calculateLag(components: [] shared Component?) {
   var lag = max(int);
+  var l = min reduce components!.lookahead();
+  return l;
   for c in components {
     if c != nil then
       lag = min(lag, c!.lookahead());
@@ -196,6 +198,8 @@ proc calculateLag(components: [] shared Component?) {
 
 proc nextTimestampGlobal(components: [] shared Component?) {
   var nextTimestamp = max(int);
+  var l = min reduce components!.nextEventTimestamp();
+  return l;
   for c in components {
     if c != nil then 
       nextTimestamp = min(nextTimestamp, c!.nextEventTimestamp());

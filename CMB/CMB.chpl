@@ -289,12 +289,48 @@ operator :(from: Component, type toType: string) {
   return str;
 }
 
-proc runSimulation(components: []shared Component?, endTime: int) {
-  forall component in components {
-    if component == nil then continue;
-    while component!.clockValue < endTime {
-      component!.step();
-    }
-    component!.sendNulls();
+proc gvt(components: [] shared Component?) {
+  var gvt = max(int);
+  for component in components {
+    if component != nil then gvt = min(gvt, component!.clockValue);
   }
+  return gvt;
+}
+
+proc runSimulation(components: [] shared Component?, endTime: int) {
+  coforall component in components {
+    if component != nil {
+      while component!.clockValue < endTime {
+        component!.step();
+      }
+      component!.sendNulls();
+    }
+  }
+}
+
+proc runSimulationDistributed(components: [] shared Component?, endTime: int) {
+  coforall loc in Locales do on loc {
+    var myComponents = components.localSlice(components.domain.localSubdomain());
+    writeln("coforall components domain: ", components.domain);
+    writeln("coforall myComponents domain: ", myComponents.domain);
+    var done = false;
+    while !done {
+      writeln("stepping on locale ", loc.id);
+      forall component in myComponents {
+        if component != nil then component!.step();
+      }
+      done = true;
+      writeln("checking on locale ", loc.id);
+      forall component in myComponents with (ref done) {
+        if component != nil {
+          if component!.clockValue < endTime 
+            then done = false; 
+            else component!.sendNulls();
+        }
+      }
+      writeln("gvt for locale ", loc.id, ": ", gvt(myComponents));
+    }
+    
+  }
+    
 }

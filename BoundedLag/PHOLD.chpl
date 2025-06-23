@@ -1,9 +1,9 @@
 use Time;
-use CMB;
+use BoundedLag;
 use Math;
 use Random;
 use List;
-
+use CommDiagnostics;
 class Node : Component {
   var counter: int; // count of messages received
   var rng: randomStream(int);
@@ -36,14 +36,12 @@ class Node : Component {
   }
 
   override proc handleEvent(e: event) {
-    if e.isNull() then return;
     var msg = e.message;
 
     var pieces: list(string, parSafe=false) = msg.split(" ", maxsplit=1);
     var msgType = pieces[0];
 
     select msgType {
-      when "null" {}
       when "send" {
         counter += 1;
         var recipientIndex = movementFunction();
@@ -128,63 +126,6 @@ proc addLink(node1: Component, node2: Component) {
   node2.inputQueues.pushBack(q);
 }
 
-proc uniformGrid(sideLength: int, mean: int, noise: int, 
-                 messageCount: int, connectionCount: int) {
-  
-  // Create the component array
-  const D = {1..sideLength*sideLength};
-  var components: [D] owned MeanPlusNoise?;
-  for i in D {
-    components[i] = new owned MeanPlusNoise(mean, noise, seed=i);
-  }
-
-  // Add the links
-  var rng = new randomStream(int);
-  for i in D {
-    for 1..connectionCount {
-      var dstIdx = rng.choose(D);
-      var srcNode = (components[i]!: Node).borrow();
-      var dstNode = (components[dstIdx]!: Node).borrow();
-      addLink(srcNode, dstNode);
-    }
-  }
-
-  // Add starting messages 
-  for i in D {
-    var node = components[i]!.borrow();
-    for 1..messageCount {
-      var dstIdx = node.movementFunction();
-      var e = new event(0, "send", nil);
-      node.outputQueues[dstIdx].add(e);
-    }
-  }
-
-  for component in components {
-    writeln("Component Contents: ");
-    writeln("Input Queues: ", component!.inputQueues);
-  }
-
-  for i in 1..3 {
-
-    
-    for component in components {
-      component!.step();
-    }
-    writeln("After Step", i);
-    for component in components {
-      writeln("Input Queues: ", component!.inputQueues);
-    }
-  }
-
-  for component in components {
-    component!.step();
-  }
-  writeln("After Step 4");
-  writeln("Component 1: ");
-  writeln(components[1]!.inputQueues);
-
-}
-
 class stencilPattern {
   proc offsets(i,j) {
     return new list((int,int));
@@ -227,11 +168,13 @@ class nRings: stencilPattern {
 proc connectComponents(components, stencil) {
   var offsets = stencil.offsets(0,0);
   for (i,j) in components.domain {
-    var neighborIndices = for offset in offsets do (i,j) + offset;
-    var bounded = for idx in neighborIndices do 
-      if components.domain.contains(idx) then idx;
-    for (ni,nj) in bounded do
-      addLink(components[i,j]!, components[ni,nj]!);
+    on components[i,j].locale{
+      var neighborIndices = for offset in offsets do (i,j) + offset;
+      var bounded = for idx in neighborIndices do 
+        if components.domain.contains(idx) then idx;
+      for (ni,nj) in bounded do
+        addLink(components[i,j]!, components[ni,nj]!);
+    }
   }
 }
 
@@ -245,19 +188,6 @@ proc initialMessages(components, numMessages) {
   }
 }
 
-
-proc localPhold(n, ringCount, simulationDuration) {
-  const D = {1..n, 1..n};
-  var components: [D] shared Component?;
-  for (i,j) in D do 
-    components[i,j] = new shared MeanPlusNoise(100,10,i*j);
-  
-  connectComponents(components, new nRings(ringCount));
-
-  initialMessages(components, 100);
-  runSimulation(components, simulationDuration);
-}
-
 proc distPhold(n, ringCount, duration) {
   use BlockDist;
   var D = blockDist.createDomain({1..n,1..n});
@@ -269,20 +199,25 @@ proc distPhold(n, ringCount, duration) {
   initialMessages(components, n*n);
   var s: stopwatch;
   s.start();
-  runSimulationDistributed(components, duration);
+  var stepCount = runSimulation(components, duration);
   s.stop();
-  return s.elapsed();
+  return (stepCount, s.elapsed());
 }
 
 proc timing() {
   for duration in [1000, 10000] {
     for sideLength in [8,16,32,64] {
+      resetCommDiagnostics();
+      startCommDiagnostics();
       var time = distPhold(sideLength, 2, duration);
       writeln(sideLength, "\t", duration, "\t", time);
+      stopCommDiagnostics();
+      // retrieve the counts and report the results
+      writeln(getCommDiagnostics());
     } 
   }
 }
 
 proc main() {
-  distPhold(8, 2, 1000);
+  timing();
 }
