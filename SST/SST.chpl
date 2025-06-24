@@ -29,16 +29,26 @@ class SimulationImpl {
       timeLord: shared TimeLord?,
       currentSimCycle: SimTime,
       currentPriority: int,
-      
-      endSimCycle: SimTime;
-
-
-
+      endSimCycle: SimTime,
+      endSim: bool;
   /* Not including:
     oneShotMap, exit, checkpoint_*, untimed*, 
     independent*, signal*, *interactive*, sim_output, stat_engin, profile*
-
   */
+
+  proc run() {
+    var timeFault = false;
+    while !endSim && ! timeFault {
+      var currentActivity = timeVortex.pop();
+      var eventTime: SimTime = currentActivity.getDeliveryTime();
+      timeFault = eventTime < currentSimCycle;
+      currentSimCycle = eventTime;
+      currentPriority = currentActivity.getPriority();
+      currentActivity.execute();
+
+      /* TODO: Signal handling */
+    }
+  }
 }
 
 class ComponentInfo {
@@ -74,6 +84,23 @@ class Link {
   var myType : LinkType;
   var mode : LinkMode;
   var tag : LinkId;
+
+  proc send(delay: SimTime, event: shared Event?) {
+    /* TODO: Convert to core time */
+
+    var deliveryTime = currentTime + delay + latency;
+    if event == nil then event = new NullEvent();
+    event.deliverTime = deliveryTime;
+    event.deliveryInfo = deliveryInfo;
+    sendQueue.insert(event);
+  }
+}
+
+class NullEvent : Event {
+
+  override proc execute() {
+    // noop
+  }
 }
 
 
@@ -82,18 +109,26 @@ class Activity {
       priorityOrder: int,
       queueOrder: int;
 
+  proc execute() {}
+}
+
+class Action : Activity {
+
 }
 
 class Event : Activity {
-  var deliveryInfo : DeliveryInfo;
-  proc execute() {}
+  var deliveryInfo : borrowed DeliveryInfo?;
+  override proc execute() {
+    if deliveryInfo == nil then return;
+    deliveryInfo!(this);
+  }
 
   proc getDeliveryLink() {}
 
 
 }
 
-class ActivityQueue{
+class ActivityQueue {
 
   proc empty(){}
   proc size(){}
@@ -126,8 +161,15 @@ class ComponentInfoMap{
   proc size() {}
 }
 
-class ClockMap{}
+class ClockMap {}
 
 class TimeLord {}
 
-class DeliveryInfo {}
+class DeliveryInfo {
+  var recipient: borrowed Component?;
+
+  proc this(event: shared Event) {
+    if recipient == nil then return;
+    recipient.handleEvent(event);
+  }
+}
