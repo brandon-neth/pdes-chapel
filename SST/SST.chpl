@@ -1,3 +1,4 @@
+use BlockDist;
 use Map;
 use List;
 
@@ -7,25 +8,26 @@ type uIntPtrT = int;
 type LinkType = int;
 type LinkMode = int;
 type LinkId = int;
-type SimulatorHeartbeat = int;
+type threadId = int;
+
 
 
 class SimulationImpl {
   // most of these are simulation_impl.h starting line 410
   //TODO: factory
   //TODO: barriers, mutexes, locks,
-  var crossThreadLinks: map(LinkId, Link?);
-  var timeVortex: shared TimeVortex;
-  var currentActivity: borrowed Activity;
+  var crossThreadLinks: map(keyType=LinkId, valType=shared Link?, parSafe=false);
+  var timeVortex: shared TimeVortex?;
+  var currentActivity: borrowed Activity?;
   var minPart: SimTime;
   
   // var minPartTC : TimeConverter?;
   var interThreadLatencies: list(SimTime),
       interThreadMinLatency: SimTime,
-      syncManager: shared SyncManager,
-      compInfoMap: shared ComponentInfoMap,
-      clockMap: shared ClockMap,
-      heartbeat: SimulatorHeartbeat?,
+      syncManager: shared SyncManager?,
+      compInfoMap: shared ComponentInfoMap?,
+      clockMap: shared ClockMap?,
+      heartbeat: shared SimulatorHeartbeat?,
       timeLord: shared TimeLord?,
       currentSimCycle: SimTime,
       currentPriority: int,
@@ -49,36 +51,84 @@ class SimulationImpl {
       /* TODO: Signal handling */
     }
   }
+
+  proc getComponentInfo(id: ComponentId) {
+    if compInfoMap == nil then return nil;
+    else return compInfoMap!.getById(id);
+  }
 }
 
 class ComponentInfo {
-  //var id: ComponentId;
-  //var parentInfo: borrowed ComponentInfo?;
-  //var name: string;
-  //var linkMap: LinkMap;
-  //var component: borrowed BaseComponent?;
+  var id: ComponentId;
+  var parentInfo: borrowed ComponentInfo?;
+  var name: string;
+  var linkMap: shared LinkMap?;
+  var component: borrowed BaseComponent?;
 }
 
 class BaseComponent {
-  var myInfo : borrowed ComponentInfo?;
   var sim : borrowed SimulationImpl?;
+  var myInfo : shared ComponentInfo?;
+  
+
+  proc init(id: ComponentId) {
+    sim = getSimulation();
+    myInfo = sim!.getComponentInfo(id);
+  }
+
+  proc configureLink(portName: string) throws {
+    if myInfo == nil then 
+      throw new Error("Trying to configure link on component without ComponentInfo");
+    var myLinks = myInfo!.linkMap;
+    var tmp: shared Link? = nil;
+
+    if myLinks != nil then tmp = myLinks!.getLink(portName);
+
+    // if tmp is nil, the port is not connected
+    if tmp == nil {
+
+    }
+
+    return tmp;
+  }
+
+  proc configureSelfLink(portName: string) {}
+
+  proc linkMap {
+    if myInfo == nil then return nil;
+    return myInfo!.linkMap.borrow();
+  }
+
+
 }
+
 
 class Component : BaseComponent {
   // No additional fields
+  proc init(id: ComponentId) {
+    super.init(id);
+  }
 }
 
 class LinkMap {
-  var linkMap: map(string, Link);
+  var linkMap: map(string, shared Link, false);
   var selfPorts: list(string);
+
+  proc getLink(port: string) throws {
+    return linkMap[port];
+  }
+
+  proc insertLink(port: string, link : shared Link) {
+    linkMap.add(port, link);
+  }
 }
 
 class Link {
-  var sendQueue : ActivityQueue?;
+  var sendQueue : shared ActivityQueue?;
   var deliveryInfo : uIntPtrT;
   var defaultTimeBase : SimTime;
   var latency : SimTime;
-  var pairLink : Link?;
+  var pairLink : shared Link?;
 
   var currentTime: SimTime;
   var myType : LinkType;
@@ -138,24 +188,27 @@ class ActivityQueue {
 }
 
 
-class TimeVortex : ActivityQueue{
+class TimeVortex : ActivityQueue {
   var maxDepth: int, 
-      sim: SimulationImpl;
+      sim: shared SimulationImpl?;
 
   proc getCurrentDepth() {}
   proc fixup() {}
 }
 
 
-
+class SimulatorHeartbeat {}
 
 
 class SyncManager {}
 
 class ComponentInfoMap{
-  var dataById : map(ComponentId, ComponentInfo?);
-  proc insert(info: ComponentInfo?) {info;}
-  proc getbyId(key) {key;}
+  var dataById : map(ComponentId, shared ComponentInfo?, false);
+  proc insert(info: ComponentInfo) {
+    if info == nil then return;
+    else dataById[info!.id] = info;
+  }
+  proc getById(key) {return dataById[key];}
   proc empty() {}
   proc clear() {}
   proc size() {}
@@ -172,4 +225,37 @@ class DeliveryInfo {
     if recipient == nil then return;
     recipient.handleEvent(event);
   }
+}
+
+
+proc connect(comp1: borrowed Component, port1: string, latency1: SimTime,
+             comp2: borrowed Component, port2: string, latency2: SimTime) {
+  var forward = new shared Link();
+  var backward = new shared Link();
+
+  forward.pairLink = backward;
+  backward.pairLink = forward;
+
+  forward.latency = latency1;
+  backward.latency = latency2;
+
+  var info1 = comp1.myInfo!;
+  var info2 = comp2.myInfo!;
+
+  info1.linkMap!.insertLink(port1, forward);
+  info2.linkMap!.insertLink(port2, backward);
+}
+
+
+var instanceDomain = blockDist.createDomain(Locales.domain);
+var instanceMap: [instanceDomain] shared SimulationImpl?;
+
+proc initSST() {
+  forall i in instanceMap.domain {
+    instanceMap[i] = new shared SimulationImpl();
+    instanceMap[i]!.compInfoMap = new shared ComponentInfoMap();
+  }
+}
+proc getSimulation() {
+  return instanceMap[here.id]!;
 }
