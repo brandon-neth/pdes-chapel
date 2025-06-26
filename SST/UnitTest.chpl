@@ -56,10 +56,21 @@ proc testConfigureLink() {
   writeln("testConfigureLink success");
 }
 
+proc testTimeVortexPQ() {
+  writeln("testTimeVortexPQ...");
+
+  var pq1 = new shared TimeVortexPQ(threadSafe=false);
+  var pq2 = new shared TimeVortexPQ(threadSafe=true);
+
+  
+  writeln("testTimeVortexPQ Sucess");
+}
+
 proc main() {
   writeln("here.id: ", here.id);
   initSST();
   createTestCompInfo();
   testConnect();
   testConfigureLink();
+  testTimeVortexPQ();
 }

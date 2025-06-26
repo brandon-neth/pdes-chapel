@@ -1,6 +1,8 @@
+use Sort;
 use BlockDist;
 use Map;
 use List;
+use Heap;
 
 type ComponentId = int;
 type SimTime = int;
@@ -16,7 +18,7 @@ class SimulationImpl {
   // most of these are simulation_impl.h starting line 410
   //TODO: factory
   //TODO: barriers, mutexes, locks,
-  var crossThreadLinks: map(keyType=LinkId, valType=shared Link?, parSafe=false);
+  var crossThreadLinks: map(LinkId, shared Link?, false);
   var timeVortex: shared TimeVortex?;
   var currentActivity: borrowed Activity?;
   var minPart: SimTime;
@@ -162,6 +164,9 @@ class Activity {
   proc execute() {}
 }
 
+record activityComparator : keyComparator {}
+proc activityComparator.key(elt: Activity) {return elt.deliveryTime;}
+
 class Action : Activity {
 
 }
@@ -180,11 +185,18 @@ class Event : Activity {
 
 class ActivityQueue {
 
-  proc empty(){}
-  proc size(){}
-  proc pop(){}
-  proc insert(activity: Activity) {activity;}
-  proc front() {}
+  proc empty(): bool do
+    writeln("Warning: `ActivityQueue.empty' should be overridden.");
+  proc size(): int do
+    writeln("Warning: `ActivityQueue.size' should be overridden.");
+  proc pop(): shared Activity? do
+    writeln("Warning: `ActivityQueue.pop' should be overridden.");
+  proc insert(activity: Activity) {
+    writeln("Warning: `ActivityQueue.insert` should be overridden.");
+    activity;
+  }
+  proc front(): shared Activity? do
+    writeln("Warning: `ActivityQueue.front' should be overridden.");
 }
 
 
@@ -192,10 +204,35 @@ class TimeVortex : ActivityQueue {
   var maxDepth: int, 
       sim: shared SimulationImpl?;
 
-  proc getCurrentDepth() {}
-  proc fixup() {}
+  proc init() {
+    maxDepth = max(int);
+    // initialization of sim is commented out in the source
+  }
+  proc getCurrentDepth() {
+
+  }
+  proc fixup(activity: shared Activity?) {
+    activity;
+    // This looks like it takes care of tracking stuff?
+    // timeVortex.cc line 53
+  }
 }
 
+class TimeVortexPQ : TimeVortex {
+  param threadSafe: bool = false;
+  var data: heap(shared Activity, parSafe = threadSafe, activityComparator),
+      insertOrder: int,
+      currentDepth: if threadSafe then atomic int else int;
+      
+  proc init(param threadSafe: bool) {
+    super.init();
+    this.threadSafe = threadSafe;
+    this.data = new heap(shared Activity, parSafe = threadSafe, comparator = new activityComparator());
+    insertOrder = 0;
+    maxDepth = 0;
+    currentDepth = 0;
+  }
+}
 
 class SimulatorHeartbeat {}
 
